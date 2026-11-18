@@ -38,6 +38,8 @@ body > main {
   --mark: light-dark(#bd502f, #f2a585);
   --ok: light-dark(#e3f1e8, #2d4838);
   --oktxt: light-dark(#25523d, #bedac8);
+  --warn: light-dark(#fbe4dd, #4a2b24);
+  --warntxt: light-dark(#8a2f14, #f4c0ad);
   background: var(--paper);
   color: var(--ink);
   font:
@@ -262,6 +264,56 @@ body > main {
 #campus-stores .good {
   background: var(--ok);
   color: var(--oktxt);
+}
+#campus-stores .checkin {
+  display: flex;
+  align-items: end;
+  gap: 8px;
+  margin: 4px 0 4px;
+}
+#campus-stores .checkin label {
+  flex: 1 1 auto;
+  font-size: 13px;
+  font-weight: 600;
+}
+#campus-stores .checkin label span {
+  margin-bottom: 3px;
+}
+#campus-stores .checkin input {
+  width: 100%;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+#campus-stores .checkin input::placeholder {
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+#campus-stores .hint {
+  display: block;
+}
+#campus-stores .checkresult {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  border-left: 4px solid;
+  display: grid;
+  gap: 3px;
+}
+#campus-stores .checkresult.good {
+  border-color: var(--oktxt);
+}
+#campus-stores .checkresult.partial {
+  background: var(--memo);
+  color: var(--memotxt);
+  border-color: var(--memotxt);
+}
+#campus-stores .checkresult.warn {
+  background: var(--warn);
+  color: var(--warntxt);
+  border-color: var(--warntxt);
 }
 #campus-stores .record {
   margin-top: 14px;

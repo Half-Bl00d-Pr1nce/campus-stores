@@ -111,6 +111,17 @@
     notice: "Sample shift · All records are fictional.",
   });
   let s = original();
+  // Result of the last check-in, shown on the register. Not persisted: it is
+  // feedback for the unit just handed over, not a record.
+  let checkin = null;
+  // "ad12", "AD 12" and "AD-012" all mean AD-12.
+  const tagKey = (x) => {
+    const m = String(x)
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, "")
+      .match(/^([A-Z]+)0*(\d+)$/);
+    return m ? m[1] + m[2] : "";
+  };
   const getAsset = (id) => assets.find((x) => x.id === id);
   const getReq = (id) => requests.find((x) => x.id === id);
   const out = (id) => s.loans.find((l) => l.asset === id && !l.back);
@@ -264,6 +275,20 @@
         '</div><button type="submit" class="primary">Save issue slip</button></form>'
       );
     }
+    // Returns are taken against the physical unit on the counter, not by
+    // clicking a slip: the operator reads the tag and the register finds it.
+    html +=
+      '<form data-checkin class="checkin" autocomplete="off"><label><span>Unit on the counter</span><input name="tag" data-tag placeholder="Read its tag, e.g. AD-12" spellcheck="false" autocapitalize="characters" aria-describedby="checkin-help" required /></label><button type="submit" class="primary">Check in</button></form>' +
+      '<small id="checkin-help" class="hint">Type the tag on the unit and press Enter. The register finds its slip and shows what is still out from the same kit.</small>';
+    if (checkin)
+      html +=
+        '<div class="checkresult ' +
+        checkin.tone +
+        '"><strong>' +
+        esc(checkin.title) +
+        "</strong>" +
+        checkin.lines.map((t) => "<p>" + esc(t) + "</p>").join("") +
+        "</div>";
     html +=
       '<div class="buttons">' +
       ["Outstanding", "All slips"]
@@ -286,11 +311,9 @@
     if (!shown.length) html += "<p>No outstanding slips.</p>";
     for (const l of shown)
       html += row(
-        "L-" + l.num + " · " + l.asset,
+        "L-" + l.num + " · " + l.asset + " · " + getAsset(l.asset).type,
         l.req + " · " + l.who + " · Due " + l.due,
-        l.back
-          ? badge("Returned")
-          : btn("Record return", "return", String(l.num)),
+        l.back ? badge("Returned", true) : badge("Awaiting unit"),
       );
     return html;
   }
@@ -378,6 +401,7 @@
   root.addEventListener("click", (e) => {
     const b = e.target.closest("[data-action]");
     if (!b) return;
+    checkin = null;
     const v = b.dataset.val;
     switch (b.dataset.action) {
       case "restart":
@@ -406,16 +430,108 @@
       case "scope":
         s.onlyOpen = v === "0";
         break;
-      case "return": {
-        const l = s.loans.find((l) => l.num === Number(v));
-        if (!l || l.back) return;
-        l.back = true;
-        s.notice = l.asset + " returned to stock. Slip L-" + l.num + " closed.";
-        break;
-      }
     }
     commit();
+    if (b.dataset.action === "tab" && v === "Loan register") focusTag();
   });
+  const focusTag = (keep = "") => {
+    const input = q("[data-tag]");
+    if (!input) return;
+    input.value = keep;
+    // Avoid popping the on-screen keyboard on touch devices.
+    if (matchMedia("(pointer: coarse)").matches) return;
+    input.focus();
+    input.select();
+  };
+  // Close the open slip for the unit physically handed over, then report the
+  // state of the whole kit that unit belongs to.
+  function checkIn(raw) {
+    const typed = raw.trim();
+    const unit = assets.find((a) => tagKey(a.id) === tagKey(typed));
+    if (!unit) {
+      checkin = {
+        tone: "warn",
+        title: "No unit is tagged “" + typed + "”. Nothing was closed.",
+        lines: ["Read the tag on the unit itself, for example PR-04 or AD-12."],
+      };
+      return false;
+    }
+    const slip = out(unit.id);
+    if (!slip) {
+      const sameType = s.loans.filter(
+        (l) => !l.back && getAsset(l.asset).type === unit.type,
+      );
+      checkin = {
+        tone: "warn",
+        title: unit.id + " is not on loan. Nothing was closed.",
+        lines: [
+          "The register has " +
+            unit.id +
+            (unit.repair
+              ? " in the workshop for repair."
+              : " on shelf " + unit.bin + "."),
+          ...sameType.map(
+            (l) =>
+              "Open slip for a " +
+              unit.type +
+              ": L-" +
+              l.num +
+              " · " +
+              l.asset +
+              " · " +
+              l.req +
+              " · " +
+              l.who +
+              ". Check the tag again before accepting this unit.",
+          ),
+        ],
+      };
+      return false;
+    }
+    slip.back = true;
+    const r = getReq(slip.req);
+    const kit = s.loans.filter((l) => l.req === slip.req);
+    const still = kit.filter((l) => !l.back);
+    checkin = {
+      tone: still.length ? "partial" : "good",
+      title: unit.id + " checked in. Slip L-" + slip.num + " closed.",
+      lines: still.length
+        ? [
+            r.id +
+              " " +
+              r.club +
+              ": " +
+              (kit.length - still.length) +
+              " of " +
+              kit.length +
+              " units back.",
+            ...still.map(
+              (l) =>
+                "Still out: " +
+                l.asset +
+                " · " +
+                getAsset(l.asset).type +
+                " · L-" +
+                l.num +
+                " in " +
+                l.who +
+                "’s name, due " +
+                l.due +
+                ".",
+            ),
+            "Ask who has it and when it is coming back, then leave a Desk book note.",
+          ]
+        : [
+            r.id +
+              " " +
+              r.club +
+              ": kit complete. All " +
+              kit.length +
+              " units back.",
+          ],
+    };
+    return true;
+  }
   root.addEventListener("change", (e) => {
     if (e.target.matches("[data-filter]")) {
       s.filter = e.target.value;
@@ -426,6 +542,15 @@
     e.preventDefault();
     const f = e.target;
     const form = new FormData(f);
+    if (f.matches("[data-checkin]")) {
+      const typed = String(form.get("tag"));
+      if (!typed.trim()) return;
+      const closed = checkIn(typed);
+      commit(checkin.title);
+      // Ready for the next unit; keep a mistyped tag so it can be corrected.
+      focusTag(closed ? "" : typed.trim());
+      return;
+    }
     if (f.matches("[data-note]")) {
       const text = String(form.get("note")).trim();
       if (!text) return;
